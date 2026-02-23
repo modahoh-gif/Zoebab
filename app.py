@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 # إعدادات البوت
 TOKEN = "7924976888:AAGOQMEmMOhx8IJblL0oZ9rDafc6uVXQNNY"
-URL = "https://your-app-name.onrender.com" # سنغير هذا لاحقاً برابط ريندر
+URL = "https://zoebab.onrender.com" # سنغير هذا لاحقاً برابط ريندر
 
 app = Flask(__name__)
 
