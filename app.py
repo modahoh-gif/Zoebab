@@ -9,7 +9,6 @@ from telegram.ext import (
     filters,
 )
 
-# Configuration
 TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 PORT = int(os.environ.get("PORT", 10000))
@@ -17,7 +16,7 @@ COOKIES_CONTENT = os.getenv("YT_COOKIES")
 
 async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
-    status_msg = await update.message.reply_text("⏳ Processing... fetching the best available audio.")
+    status_msg = await update.message.reply_text("⏳ Searching for the best available format...")
     
     unique_id = str(update.message.message_id)
     filename = f"audio_{unique_id}"
@@ -29,13 +28,11 @@ async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f.write(COOKIES_CONTENT.strip())
                 f.write("\n")
 
-        # التعديل الجذري هنا لحل مشكلة Requested format
+        # إعدادات الطوارئ: طلب أي جودة متاحة (فيديو أو صوت) وتحويلها
         ydl_opts = {
-            # نختار أفضل صوت متاح دون تحديد امتداد معين لتجنب الخطأ
-            "format": "ba/b", 
+            "format": "best", # يطلب أفضل ملف مدمج (فيديو+صوت) لضمان التوفر
             "outtmpl": f"{filename}.%(ext)s",
-            "quiet": True,
-            "no_warnings": True,
+            "quiet": False, # جعلناه False لنرى التفاصيل في الـ Logs
             "cookiefile": cookie_path if COOKIES_CONTENT else None,
             "nocheckcertificate": True,
             "postprocessors": [{
@@ -43,9 +40,6 @@ async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE
                 "preferredcodec": "mp3",
                 "preferredquality": "192",
             }],
-            "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            }
         }
 
         def run_dl():
@@ -57,34 +51,29 @@ async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE
         expected_file = f"{filename}.mp3"
         
         if os.path.exists(expected_file):
-            await status_msg.edit_text("✅ Success! Sending your audio...")
+            await status_msg.edit_text("✅ Done! Uploading MP3...")
             with open(expected_file, "rb") as audio:
                 await update.message.reply_audio(audio=audio)
             await status_msg.delete()
         else:
-            # إذا فشل التحويل، نبحث عن الملف الأصلي (webm/m4a) ونرسله كما هو
-            await status_msg.edit_text("⚠️ MP3 conversion failed, sending original format...")
-            for ext in ['webm', 'm4a', 'opus']:
-                alt_file = f"{filename}.{ext}"
-                if os.path.exists(alt_file):
-                    with open(alt_file, "rb") as audio:
-                        await update.message.reply_audio(audio=audio)
-                    os.remove(alt_file)
-                    break
-    
+            await status_msg.edit_text("❌ System error: Audio could not be extracted.")
+
     except Exception as e:
-        await status_msg.edit_text(f"❌ Error: {str(e)[:100]}")
+        await status_msg.edit_text(f"❌ Critical Error: {str(e)[:150]}")
     
     finally:
+        # تنظيف كل الملفات المؤقتة
         if os.path.exists(cookie_path): os.remove(cookie_path)
-        if os.path.exists(f"{filename}.mp3"): os.remove(f"{filename}.mp3")
+        for ext in ['mp3', 'webm', 'm4a', 'mp4', 'ytdl', 'part']:
+            f = f"{filename}.{ext}"
+            if os.path.exists(f): os.remove(f)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
     if "youtube.com" in url or "youtu.be" in url:
         asyncio.create_task(download_audio_task(update, context))
     else:
-        await update.message.reply_text("❌ Send a valid YouTube link.")
+        await update.message.reply_text("Please send a valid YouTube link.")
 
 def main():
     app = Application.builder().token(TOKEN).build()
