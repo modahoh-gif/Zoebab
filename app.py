@@ -9,7 +9,6 @@ from telegram.ext import (
     filters,
 )
 
-# المتغيرات الأساسية
 TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 PORT = int(os.environ.get("PORT", 10000))
@@ -17,7 +16,7 @@ COOKIES_CONTENT = os.getenv("YT_COOKIES")
 
 async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text
-    status_msg = await update.message.reply_text("⏳ Processing... Using Docker environment.")
+    status_msg = await update.message.reply_text("⏳ Searching for a compatible format...")
     
     unique_id = str(update.message.message_id)
     filename = f"audio_{unique_id}"
@@ -30,10 +29,11 @@ async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f.write(COOKIES_CONTENT.strip())
                 f.write("\n")
 
-        # إعدادات متينة جداً لتجنب خطأ Requested Format
+        # إعدادات الـ Ultra Compatibility
         ydl_opts = {
-            # نطلب أفضل جودة متاحة (فيديو أو صوت) لضمان عدم حدوث خطأ التوفر
-            "format": "bestaudio/best",
+            # التغيير الجوهري هنا: نطلب أفضل فيديو مدمج (صوت وصورة) 
+            # لأن يوتيوب لا يحجبها مثل ملفات الصوت المنفصلة
+            "format": "best/bestvideo+bestaudio", 
             "outtmpl": f"{filename}.%(ext)s",
             "quiet": True,
             "no_warnings": True,
@@ -58,15 +58,17 @@ async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE
         expected_file = f"{filename}.mp3"
         
         if os.path.exists(expected_file):
-            await status_msg.edit_text("✅ Downloaded via Docker! Sending...")
+            await status_msg.edit_text("✅ Success! Sending audio...")
             with open(expected_file, "rb") as audio:
-                await update.message.reply_audio(audio=audio)
+                await update.message.reply_audio(audio=audio, caption="Done via Docker environment")
             await status_msg.delete()
         else:
-            await status_msg.edit_text("❌ Error: Audio extraction failed. FFmpeg might be missing in Docker.")
+            await status_msg.edit_text("❌ Error: Could not extract audio. FFmpeg is required.")
 
     except Exception as e:
-        await status_msg.edit_text(f"❌ Error: {str(e)[:150]}")
+        # إذا فشل كل شيء، سنعرض الخطأ بالتفصيل لنعرف السبب
+        error_detail = str(e)[:200]
+        await status_msg.edit_text(f"❌ Critical Failure:\n`{error_detail}`")
     
     finally:
         # تنظيف الملفات
@@ -83,14 +85,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Please send a valid YouTube link.")
 
 def main():
-    if not TOKEN or not WEBHOOK_URL:
-        print("Set BOT_TOKEN and WEBHOOK_URL!")
-        return
-
     app = Application.builder().token(TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    print(f"Bot starting on port {PORT}...")
     app.run_webhook(
         listen="0.0.0.0",
         port=PORT,
