@@ -16,8 +16,8 @@ COOKIES_CONTENT = os.getenv("YT_COOKIES")
 
 
 async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text
-    status_msg = await update.message.reply_text("⏳ Searching for a compatible format...")
+    url = update.message.text.strip()
+    status_msg = await update.message.reply_text("⏳ Preparing to download...")
 
     unique_id = str(update.message.message_id)
     filename = f"audio_{unique_id}"
@@ -30,9 +30,9 @@ async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f.write(COOKIES_CONTENT.strip())
                 f.write("\n")
 
-        # إعدادات مستقرة وآمنة
+        # إعدادات yt-dlp متقدمة مع fallback
         ydl_opts = {
-            "format": "bestaudio/best",   # ✅ الحل الأساسي
+            "format": "bestaudio/best/bestvideo+bestaudio",
             "outtmpl": f"{filename}.%(ext)s",
             "quiet": True,
             "no_warnings": True,
@@ -47,8 +47,9 @@ async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE
                 "preferredquality": "192",
             }],
             "http_headers": {
-                "User-Agent": "Mozilla/5.0",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
             },
+            "age_limit": 100,  # لتجاوز مشاكل الفيديوهات المقيدة بالعمر
         }
 
         def run_dl():
@@ -58,27 +59,22 @@ async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE
         await asyncio.to_thread(run_dl)
 
         expected_file = f"{filename}.mp3"
-
         if os.path.exists(expected_file):
-            await status_msg.edit_text("✅ Success! Sending audio...")
+            await status_msg.edit_text("✅ Download complete! Sending audio...")
             with open(expected_file, "rb") as audio:
-                await update.message.reply_audio(
-                    audio=audio,
-                    caption="Downloaded successfully 🎵"
-                )
+                await update.message.reply_audio(audio=audio, caption="Downloaded via bot 🚀")
             await status_msg.delete()
         else:
-            await status_msg.edit_text("❌ Error: Could not extract audio. Make sure FFmpeg is installed.")
+            await status_msg.edit_text("❌ Failed to extract audio. Make sure FFmpeg is installed.")
 
     except Exception as e:
         error_detail = str(e)[:300]
         await status_msg.edit_text(f"❌ Critical Failure:\n`{error_detail}`", parse_mode="Markdown")
 
     finally:
-        # تنظيف الملفات
+        # تنظيف الملفات المؤقتة
         if os.path.exists(cookie_path):
             os.remove(cookie_path)
-
         for ext in ['mp3', 'webm', 'm4a', 'mp4', 'part']:
             f = f"{filename}.{ext}"
             if os.path.exists(f):
@@ -87,7 +83,6 @@ async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
-
     if "youtube.com" in url or "youtu.be" in url:
         asyncio.create_task(download_audio_task(update, context))
     else:
@@ -96,7 +91,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     app = Application.builder().token(TOKEN).build()
-
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     app.run_webhook(
