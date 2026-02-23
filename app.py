@@ -1,53 +1,58 @@
 import os
+import yt_dlp
 from flask import Flask, request
-import telegram
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram import Update, Bot
+from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 
-# إعدادات البوت
-TOKEN = "7924976888:AAGOQMEmMOhx8IJblL0oZ9rDafc6uVXQNNY"
-URL = "https://zoebab.onrender.com" # سنغير هذا لاحقاً برابط ريندر
+TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # https://your-app.onrender.com
 
 app = Flask(__name__)
+bot = Bot(token=TOKEN)
 
-# بناء التطبيق
-application = Application.builder().token(TOKEN).build()
+telegram_app = ApplicationBuilder().token(TOKEN).build()
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("أهلاً بك! أرسل رابط يوتيوب وسأقوم بتحويله (تجريبي).")
+async def download_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = update.message.text
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
-    if "youtube.com" in text or "youtu.be" in text:
-        await update.message.reply_text(f"جاري معالجة الرابط: {text}\n(ملاحظة: تحتاج لإضافة مكتبة yt-dlp للتحميل الفعلي)")
-    else:
-        await update.message.reply_text("من فضلك أرسل رابط يوتيوب صحيح.")
+    if "youtube.com" not in url and "youtu.be" not in url:
+        await update.message.reply_text("أرسل رابط يوتيوب صحيح")
+        return
 
-# إضافة الأوامر
-application.add_handler(CommandHandler("start", start))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    await update.message.reply_text("جاري التحميل...")
 
-@app.route(f'/{TOKEN}', methods=['POST'])
-async def respond():
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    await application.process_update(update)
-    return 'ok'
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': 'audio.%(ext)s',
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+    }
 
-@app.route('/set_webhook', methods=['GET', 'POST'])
-def set_webhook():
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
+
+    await update.message.reply_audio(audio=open("audio.mp3", "rb"))
+    os.remove("audio.mp3")
+
+telegram_app.add_handler(
+    MessageHandler(filters.TEXT & ~filters.COMMAND, download_audio)
+)
+
+@app.route(f"/{TOKEN}", methods=["POST"])
+async def webhook():
+    data = request.get_json(force=True)
+    update = Update.de_json(data, bot)
+    await telegram_app.process_update(update)
+    return "ok"
+
+@app.route("/")
+def home():
+    return "Bot is running!"
+
+if __name__ == "__main__":
     import asyncio
-    webhook_url = f"{URL}/{TOKEN}"
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    s = loop.run_until_complete(application.bot.set_webhook(webhook_url))
-    if s:
-        return "Webhook setup successful"
-    else:
-        return "Webhook setup failed"
-
-@app.route('/')
-def index():
-    return 'Bot is running...'
-
-if __name__ == '__main__':
-    app.run(port=int(os.environ.get('PORT', 5000)))
+    asyncio.run(bot.set_webhook(f"{WEBHOOK_URL}/{TOKEN}"))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
