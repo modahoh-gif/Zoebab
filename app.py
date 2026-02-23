@@ -9,15 +9,14 @@ from telegram.ext import (
     filters,
 )
 
-# جلب المتغيرات من إعدادات رندر
+# Configuration from Environment Variables
 TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 PORT = int(os.environ.get("PORT", 10000))
-# تأكد من لصق محتوى ملف الكوكيز بالكامل في هذا المتغير في رندر
 COOKIES_CONTENT = os.getenv("YT_COOKIES")
 
 async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """دالة التحميل التي تعمل في الخلفية"""
+    """Background task to handle downloading and converting audio"""
     url = update.message.text
     status_msg = await update.message.reply_text("⏳ Processing your request... Please wait.")
     
@@ -26,26 +25,26 @@ async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE
     cookie_path = f"cookies_{unique_id}.txt"
 
     try:
-        # 1. إنشاء ملف الكوكيز ومعالجة التنسيق
+        # 1. Write cookies to a temporary file with clean formatting
         if COOKIES_CONTENT:
             with open(cookie_path, "w", encoding="utf-8") as f:
-                # تنظيف النص لضمان توافقه مع تنسيق Netscape
                 f.write(COOKIES_CONTENT.strip())
                 f.write("\n")
 
-        # 2. إعدادات yt-dlp المحسنة
+        # 2. Optimized yt-dlp options to avoid 'Format Not Available'
         ydl_opts = {
+            # Use 'bestaudio' and let FFmpeg handle the conversion to MP3
             "format": "bestaudio/best",
             "outtmpl": f"{filename}.%(ext)s",
             "quiet": True,
             "no_warnings": True,
             "cookiefile": cookie_path if COOKIES_CONTENT else None,
+            "nocheckcertificate": True,
             "postprocessors": [{
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
                 "preferredquality": "192",
             }],
-            # خيارات إضافية لتفادي الحظر
             "http_headers": {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
             }
@@ -55,13 +54,13 @@ async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
 
-        # تشغيل التحميل دون تجميد البوت
+        # Run the blocking download in a separate thread
         await asyncio.to_thread(run_dl)
         
         expected_file = f"{filename}.mp3"
         
         if os.path.exists(expected_file):
-            await status_msg.edit_text("✅ Downloaded! Uploading to Telegram...")
+            await status_msg.edit_text("✅ Download complete! Sending to Telegram...")
             with open(expected_file, "rb") as audio:
                 await update.message.reply_audio(
                     audio=audio,
@@ -69,41 +68,40 @@ async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE
                 )
             await status_msg.delete()
         else:
-            await status_msg.edit_text("❌ Error: Could not process audio. Ensure FFmpeg is active.")
+            await status_msg.edit_text("❌ Error: Audio file not found. Check if FFmpeg is installed.")
 
     except Exception as e:
         error_msg = str(e)
-        if "cookies" in error_msg.lower():
-            await status_msg.edit_text("❌ Cookie Format Error: Please re-export cookies from Kiwi Browser in 'Netscape' format.")
-        else:
-            await status_msg.edit_text(f"❌ Failed: {error_msg[:100]}")
+        print(f"Error details: {error_msg}")
+        await status_msg.edit_text(f"❌ Failed: {error_msg[:100]}")
     
     finally:
-        # تنظيف الملفات المؤقتة دائماً
-        if os.path.exists(f"{filename}.mp3"): os.remove(f"{filename}.mp3")
+        # Cleanup temporary files
         if os.path.exists(cookie_path): os.remove(cookie_path)
-        # حذف الملفات الأصلية إذا بقيت (مثل .webm أو .m4a)
-        for ext in ['webm', 'm4a', 'ytdl']:
-            if os.path.exists(f"{filename}.{ext}"): os.remove(f"{filename}.{ext}")
+        if os.path.exists(f"{filename}.mp3"): os.remove(f"{filename}.mp3")
+        # Cleanup any stray files from failed downloads
+        for ext in ['webm', 'm4a', 'ytdl', 'part']:
+            temp_file = f"{filename}.{ext}"
+            if os.path.exists(temp_file): os.remove(temp_file)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """استلام الرسالة والرد السريع لتجنب Webhook Timeout"""
+    """Entry point for text messages to avoid Webhook timeout"""
     url = update.message.text
     if "youtube.com" in url or "youtu.be" in url:
-        # البدء في مهمة التحميل بشكل منفصل
+        # Launch the task without blocking the response to Telegram
         asyncio.create_task(download_audio_task(update, context))
     else:
         await update.message.reply_text("❌ Please send a valid YouTube link.")
 
 def main():
     if not TOKEN or not WEBHOOK_URL:
-        print("CRITICAL ERROR: BOT_TOKEN or WEBHOOK_URL not set in Environment Variables.")
+        print("Set BOT_TOKEN and WEBHOOK_URL in environment variables.")
         return
 
     app = Application.builder().token(TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print(f"Bot is starting on port {PORT} via Webhook...")
+    print(f"Starting bot on port {PORT}...")
     app.run_webhook(
         listen="0.0.0.0",
         port=PORT,
