@@ -1,7 +1,5 @@
-# اختيار نظام تشغيل خفيف يحتوي على بايثون
 FROM python:3.10-slim
 
-# تثبيت الأدوات الأساسية وFFmpeg
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
@@ -11,25 +9,20 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# نسخ متطلبات البايثون وتثبيتها
 COPY requirements.txt .
 RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-# تحديث yt-dlp لأحدث نسخة
+# تحديث yt-dlp
 RUN pip install --upgrade yt-dlp
 
-# نسخ الكود
 COPY . .
 
-# البيئة الافتراضية لتجنب مشاكل الترميز
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
-# فتح البورت
 EXPOSE 10000
 
-# تشغيل البوت
 CMD ["python", "app.py"]
