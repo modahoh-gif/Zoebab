@@ -1,61 +1,56 @@
+import asyncio
 import os
 import yt_dlp
-import asyncio
 from telegram import Update
-from telegram.ext import Application, MessageHandler, ContextTypes, filters
+from telegram.ext import ContextTypes
 
-TOKEN = os.getenv("BOT_TOKEN")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+async def download_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = update.message.text
 
-async def download_audio_task(update: Update, url: str):
-    """تشغيل التحميل في Thread بدون تعليق البوت"""
+    if "youtube.com" not in url and "youtu.be" not in url:
+        await update.message.reply_text("الرجاء إرسال رابط يوتيوب صحيح")
+        return
+
+    status_msg = await update.message.reply_text("جاري المعالجة والتحميل... ⏳")
+
+    # إعدادات محسنة
+    unique_id = str(update.message.message_id) # لضمان عدم تداخل الملفات إذا طلب أكثر من شخص في نفس الوقت
+    filename = f"audio_{unique_id}"
+    
     ydl_opts = {
         "format": "bestaudio/best",
-        "outtmpl": f"{update.message.message_id}.%(ext)s",
+        "outtmpl": f"{filename}.%(ext)s", # اسم فريد
         "postprocessors": [{
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
             "preferredquality": "192",
         }],
         "quiet": True,
+        "no_warnings": True,
     }
 
-    def download():
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+    try:
+        def download():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
 
-    await asyncio.to_thread(download)
+        # تشغيل التحميل في Thread منفصل
+        await asyncio.to_thread(download)
+        
+        expected_file = f"{filename}.mp3"
 
-    audio_file = f"{update.message.message_id}.mp3"
-    await update.message.reply_audio(audio=open(audio_file, "rb"))
-    os.remove(audio_file)
+        if os.path.exists(expected_file):
+            await status_msg.edit_text("جاري رفع الملف إلى تليجرام... ⬆️")
+            with open(expected_file, "rb") as audio:
+                await update.message.reply_audio(audio=audio)
+            os.remove(expected_file)
+            await status_msg.delete() # حذف رسالة "جاري التحميل" بعد الانتهاء
+        else:
+            await status_msg.edit_text("عذراً، حدث خطأ أثناء معالجة الملف.")
 
-
-async def download_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    url = update.message.text
-
-    if "youtube.com" not in url and "youtu.be" not in url:
-        await update.message.reply_text("أرسل رابط يوتيوب صحيح")
-        return
-
-    # الرد الفوري
-    await update.message.reply_text("جاري التحميل... 🚀")
-
-    # تشغيل التحميل في background task
-    asyncio.create_task(download_audio_task(update, url))
-
-
-def main():
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_audio))
-
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000)),
-        webhook_url=f"{WEBHOOK_URL}/{TOKEN}",
-        url_path=TOKEN,
-    )
-
-
-if __name__ == "__main__":
-    main()
+    except Exception as e:
+        print(f"Error: {e}")
+        await status_msg.edit_text(f"حدث خطأ غير متوقع: {str(e)}")
+        # تنظيف أي ملفات متبقية في حال الخطأ
+        if os.path.exists(f"{filename}.mp3"):
+            os.remove(f"{filename}.mp3")
