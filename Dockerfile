@@ -1,25 +1,22 @@
 # اختيار نظام تشغيل خفيف يحتوي على بايثون
 FROM python:3.10-slim
 
-# إعداد بيئة ثابتة، تحديث النظام وتثبيت الأدوات الضرورية
+# تثبيت الأدوات الأساسية وFFmpeg
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
     git \
-    wget \
     build-essential \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# تعيين مجلد العمل
 WORKDIR /app
 
-# نسخ ملفات المتطلبات وتثبيت المكتبات
+# نسخ متطلبات البايثون وتثبيتها
 COPY requirements.txt .
 RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-# تحديث yt-dlp لأحدث نسخة (لحماية ضد تغييرات YouTube)
+# تحديث yt-dlp لأحدث نسخة
 RUN pip install --upgrade yt-dlp
 
 # نسخ الكود
@@ -31,7 +28,7 @@ ENV PYTHONUNBUFFERED=1 \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
-# Expose البورت (اختياري حسب Webhook)
+# فتح البورت
 EXPOSE 10000
 
 # تشغيل البوت
