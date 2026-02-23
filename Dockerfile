@@ -1,21 +1,20 @@
-# استخدام نسخة بايثون رسمية وخفيفة
+# اختيار نظام تشغيل خفيف يحتوي على بايثون
 FROM python:3.10-slim
 
-# تثبيت FFmpeg وتحديث النظام داخل الحاوية
+# تحديث النظام وتثبيت FFmpeg (ضروري جداً لتحويل الصيغ)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
+    curl \
     && apt-get clean \
-    # تنظيف الملفات المؤقتة لتقليل حجم الصورة
     && rm -rf /var/lib/apt/lists/*
 
-# تحديد مجلد العمل
 WORKDIR /app
 
-# نسخ ملف المكتبات وتثبيتها
+# تثبيت المكتبات
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# نسخ بقية ملفات الكود
+# نسخ الكود
 COPY . .
 
 # تشغيل البوت
