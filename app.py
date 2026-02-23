@@ -12,7 +12,7 @@ COOKIES_CONTENT = os.getenv("YT_COOKIES")
 
 async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
-    status_msg = await update.message.reply_text("⏳ Preparing download...")
+    status_msg = await update.message.reply_text("⏳ Downloading audio...")
 
     unique_id = str(update.message.message_id)
     filename = f"audio_{unique_id}"
@@ -25,23 +25,24 @@ async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f.write(COOKIES_CONTENT.strip() + "\n")
 
         ydl_opts = {
-            "format": "bestaudio[ext=m4a]/bestaudio/best",  # fallback للصيغ المتاحة
+            # fallback تلقائي: أولاً m4a، ثم أفضل صوت متاح، ثم أي صيغة عامة
+            "format": "bestaudio[ext=m4a]/bestaudio/best",
             "outtmpl": f"{filename}.%(ext)s",
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-            "cookiefile": cookie_path,
+            "cookiefile": cookie_path if COOKIES_CONTENT else None,
             "nocheckcertificate": True,
             "retries": 10,
             "fragment_retries": 10,
-            "age_limit": 100,  # دعم الفيديوهات المقيدة بالعمر
+            "age_limit": 100,  # لتجاوز مشاكل الفيديوهات المقيدة بالعمر
             "postprocessors": [{
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
                 "preferredquality": "192",
             }],
             "http_headers": {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "User-Agent": "Mozilla/5.0",
             },
         }
 
