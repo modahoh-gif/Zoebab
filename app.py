@@ -2,12 +2,7 @@ import asyncio
 import os
 import yt_dlp
 from telegram import Update
-from telegram.ext import (
-    Application,
-    MessageHandler,
-    ContextTypes,
-    filters,
-)
+from telegram.ext import Application, MessageHandler, ContextTypes, filters
 
 TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
@@ -17,30 +12,29 @@ COOKIES_CONTENT = os.getenv("YT_COOKIES")
 
 async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
-    status_msg = await update.message.reply_text("⏳ Preparing to download...")
+    status_msg = await update.message.reply_text("⏳ Preparing download...")
 
     unique_id = str(update.message.message_id)
     filename = f"audio_{unique_id}"
     cookie_path = f"cookies_{unique_id}.txt"
 
     try:
-        # إنشاء ملف الكوكيز إذا موجود
+        # إنشاء ملف الكوكيز
         if COOKIES_CONTENT:
             with open(cookie_path, "w", encoding="utf-8") as f:
-                f.write(COOKIES_CONTENT.strip())
-                f.write("\n")
+                f.write(COOKIES_CONTENT.strip() + "\n")
 
-        # إعدادات yt-dlp متقدمة مع fallback
         ydl_opts = {
-            "format": "bestaudio/best/bestvideo+bestaudio",
+            "format": "bestaudio[ext=m4a]/bestaudio/best",  # fallback للصيغ المتاحة
             "outtmpl": f"{filename}.%(ext)s",
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-            "cookiefile": cookie_path if COOKIES_CONTENT else None,
+            "cookiefile": cookie_path,
             "nocheckcertificate": True,
             "retries": 10,
             "fragment_retries": 10,
+            "age_limit": 100,  # دعم الفيديوهات المقيدة بالعمر
             "postprocessors": [{
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
@@ -49,7 +43,6 @@ async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE
             "http_headers": {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
             },
-            "age_limit": 100,  # لتجاوز مشاكل الفيديوهات المقيدة بالعمر
         }
 
         def run_dl():
@@ -65,17 +58,16 @@ async def download_audio_task(update: Update, context: ContextTypes.DEFAULT_TYPE
                 await update.message.reply_audio(audio=audio, caption="Downloaded via bot 🚀")
             await status_msg.delete()
         else:
-            await status_msg.edit_text("❌ Failed to extract audio. Make sure FFmpeg is installed.")
+            await status_msg.edit_text("❌ Failed to extract audio. Check FFmpeg installation.")
 
     except Exception as e:
-        error_detail = str(e)[:300]
-        await status_msg.edit_text(f"❌ Critical Failure:\n`{error_detail}`", parse_mode="Markdown")
+        await status_msg.edit_text(f"❌ Critical Failure:\n`{str(e)[:300]}`", parse_mode="Markdown")
 
     finally:
-        # تنظيف الملفات المؤقتة
+        # تنظيف الملفات
         if os.path.exists(cookie_path):
             os.remove(cookie_path)
-        for ext in ['mp3', 'webm', 'm4a', 'mp4', 'part']:
+        for ext in ["mp3", "webm", "m4a", "mp4", "part"]:
             f = f"{filename}.{ext}"
             if os.path.exists(f):
                 os.remove(f)
