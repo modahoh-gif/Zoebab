@@ -12,12 +12,13 @@ PORT = int(os.environ.get("PORT", 10000))
 COOKIES_CONTENT = os.getenv("YT_COOKIES")
 DATABASE_URL = "postgresql://neondb_owner:npg_FX12aBqMvtyJ@ep-steep-thunder-adoapjc4-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require"
 
-# --- وظائف قاعدة البيانات ---
+# --- وظائف قاعدة البيانات المحدثة ---
 
 def init_db():
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
-    cur.execute('''CREATE TABLE IF NOT EXISTS users (user_id BIGINT PRIMARY KEY)''')
+    # قمنا بتغيير اسم الجدول هنا ليكون خاصاً بهذا البوت فقط
+    cur.execute('''CREATE TABLE IF NOT EXISTS audio_bot_users (user_id BIGINT PRIMARY KEY)''')
     conn.commit()
     cur.close()
     conn.close()
@@ -26,7 +27,8 @@ def add_user(user_id):
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
-        cur.execute("INSERT INTO users (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING", (user_id,))
+        # نستخدم اسم الجدول الجديد audio_bot_users
+        cur.execute("INSERT INTO audio_bot_users (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING", (user_id,))
         conn.commit()
         cur.close()
         conn.close()
@@ -34,13 +36,18 @@ def add_user(user_id):
         print(f"DB Error: {e}")
 
 def get_user_count():
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM users")
-    count = cur.fetchone()[0]
-    cur.close()
-    conn.close()
-    return count
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+        # نعد المستخدمين من الجدول الخاص بهذا البوت فقط
+        cur.execute("SELECT COUNT(*) FROM audio_bot_users")
+        count = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+        return count
+    except:
+        return 0
+
 
 # --- مهام البوت ---
 
